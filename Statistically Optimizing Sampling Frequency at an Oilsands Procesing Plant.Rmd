@@ -1,0 +1,495 @@
+---
+title: Statitically Determine the Appropriate Frequency for Sample Collection in Oil
+  Sands PRoduction Accounting
+author: "Rahul Jha, Kamran Imam"
+date: "16/10/2019"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(mosaic)
+library(mosaicData)
+library(tidyverse)
+library(lubridate)
+library(anytime)
+library(ggplot2)
+library(wesanderson)
+library(ggpubr)
+library(stringr)
+library(reshape2)
+library(ggplot2)
+library(ggthemes)
+library(pander)
+library(gridExtra)
+library(formattable)
+```
+## Overview
+
+### AutoSamplers Working Principle 
+- [link] (https://www.youtube.com/watch?v=uke2Ai_5-2A,) Sentry Equipment youtube channel dated: Oct 10, 2019
+### Project Motivation
+-Oil Sands Industry spends in order of millions USD/year to maintain autosamplers.
+-Autosamplers fail quite often due to excessive wear and tear, posed due to highly abrasive oil sands slurry.
+-In this problem an autosampler will be discussed which takes a sample every 10 minutes.
+-After 12 hours, the autosampler is retrieved from the system and samples are sent to laboratory for analysis
+-Decreasing the number of times autosampler is exposed to the oil sand slurry could reduce the wear and tear on the sampler and consequently will lead to lower maintenance needs. 
+
+ 
+
+## Precision and Accuracy:
+- One way to reduce the wear and tear of autosampler, is to reduce the sampling frequency (moving from 12 hrs to 24 hrs).
+- But does decreasing the frequency of sampling analysis, compromises the accuracy of the results regarding prodct quality of sales stream.
+
+
+Precision but not accurate| Accurate but not precise | Accurate and Precise 
+--------------------------|--------------------------|---------------------
+![](pic1.png){width = 33%} ![](pic2.png){width = 33%} ![](pic3.png){width = 33%} 
+
+
+- Accuracy: Will be checked if the two means are different
+- Precision: Wwill be checked if the two standard deviations are different
+
+https://blog.minitab.com/blog/real-world-quality-improvement/accuracy-vs-precision-whats-the-difference
+
+
+## Data Analysis method
+- Data wrangline 
+  + read the data
+  + sort the data
+- Visualize data 
+  + Shape of Both 12hrs and 24 hrs data
+  + Box plot of monthly averages for all samples
+
+## Data Visualization 
+- Code was created to extract the data.
+```{r echo=TRUE}
+FrothSampleData = read.csv('Froth- Solids.csv',header=TRUE)#read the data file
+FrothSampleData$Date <- ymd_hm(FrothSampleData$Date) # converting the Date to date format
+FrothSampleData<-FrothSampleData%>%
+mutate(month=month(FrothSampleData$Date)) # Extracting the month from the date format
+FrothSampleData<-FrothSampleData%>%
+mutate(year=year(FrothSampleData$Date)) # Extracting the year from the date format
+head(FrothSampleData,4)
+```
+
+
+```
+```{r}
+tail(FrothSampleData,4)
+```
+
+
+- Boxplot for monthly data is created to understand the monthly variability in bitumen content in data.
+
+```{r}
+ggplot(FrothSampleData) +
+  geom_boxplot(aes(y=FrothSampleData$Bitumen,
+                   x=reorder(format(FrothSampleData$Date,'%b%y'),FrothSampleData$Date,),
+                   fill=format(FrothSampleData$Date,'%Y'))) +
+  xlab('Months') +  ylab('Bitumen Content, % (by weight)') +guides(fill=guide_legend(title="Year")) +theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+
+```{r}
+head(FrothSampleData$Bitumen, 20)
+```
+
+
+```{r}
+mean(FrothSampleData$Bitumen)
+```
+
+
+```{r}
+m= mean(FrothSampleData$Bitumen)
+s= sd(FrothSampleData$Bitumen)
+
+ggplot(FrothSampleData, aes(FrothSampleData$Bitumen)) +
+        geom_histogram(aes(y = ..density..),binwidth =.5, colour = "red", fill = 'blue') +
+        stat_function(fun = dnorm, colour='red', args = list(mean = m,sd = s)) +
+        xlab("Bitumen Content in Froth Sample [%]")+
+        ylab("No. Of Times Values Apperead in the Data (Frequency)")+
+        ggtitle("Frequency Histogram of Bitumen Content in Froth Sample")
+```
+
+
+
+It is noticed above that the distribution is not completely normal and that it is left skewed.
+```{r}
+ggqqplot(FrothSampleData$Bitumen,title=" Normal Q-Q plot for Normality Testing",color='blue')
+#qqnorm(FrothSampleData$Bitumen, main = "Normal Q-Q Plot for Driving Accuracy")
+
+```
+
+
+
+Also, the normality plot above show that the dataset does not follow a normal distribution trend.Therefore, bootstrap method will be used to calculate confidence interval since it is independent of the shape of population distribution.
+
+Determining Confidence Interval (CI) on yearly basis with complete dataset. 
+
+### Bootstrap testing [ CI - Testing]
+```{r}
+Nreps = 20000 #20000 samples for bootstrapping
+hr12_means = numeric(Nreps) #Vector to store values 12 hourly means 
+hr12_sd = numeric(Nreps) #Vector to store values 12 hourly standard deviation
+hr24_means = numeric(Nreps) #Vector to store values 24 hourly means
+hr24_sd = numeric(Nreps) #Vector to store values 24 hourly standard deviation
+mean_difference= numeric(Nreps) #Vector to hold values of difference of means
+sd_ratio = numeric(Nreps) #Vector to store values of ration of standard deviations
+sd_difference = numeric(Nreps) #Vector to hold values of difference of standard deviation
+n12hrs = 60 # Number of monthly 12 hours samples (2 samples in a day)
+n24hrs = 30 # Number of monthly 24 hours samples (1 sample in a day)
+for(i in 1:Nreps)
+{
+  hr12_means[i] = mean(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+  hr24_means[i] = mean(sample(FrothSampleData$Bitumen, n24hrs, replace=TRUE))
+  hr12_sd[i]= sd(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+  hr24_sd[i] =sd(sample(FrothSampleData$Bitumen, n24hrs, replace=TRUE))
+  mean_difference[i] = hr12_means[i]- hr24_means[i]
+  sd_ratio[i]=hr12_sd[i]/hr24_sd[i]
+  sd_difference[i]=hr12_sd[i]-hr24_sd[i]
+}
+bootstrap_samples = data.frame(hr12_means, hr24_means, mean_difference,hr12_sd,hr24_sd,sd_ratio,sd_difference)
+head(bootstrap_samples, 3)
+```
+
+```{r}
+ggplot(bootstrap_samples, aes(x = hr12_means)) + geom_histogram(col='red', fill='blue', binwidth=0.05) + xlab("12 hourly means of Bitumen Content, % (By weight)") + ylab("Frequency") + ggtitle("Histogram of 12 hourly Bootstrap Means of Bitumen Content, % (By weight)")
+```
+
+
+```{r}
+ggplot(bootstrap_samples, aes(x = hr24_means)) + geom_histogram(col='red', fill='blue', binwidth=0.05) + xlab("24 hourly means of Bitumen Content, % (By weight)") + ylab("Frequency") + ggtitle("Histogram of 24 hourly Bootstrap Means of Bitumen Content, % (By weight)")
+```
+
+
+```{r}
+ggplot(bootstrap_samples, aes(x = mean_difference)) + geom_histogram(col='red', fill='blue', binwidth=0.05) + xlab("Difference of 12 hourly and 24 hourly means of Bitumen Content") + ylab("Frequency") + ggtitle("Histogram of Difference of Bootstrapped 12 and 24 hourly Means of Bitument Content")
+```
+
+
+```{r}
+ggplot(bootstrap_samples, aes(x = hr12_sd)) + geom_histogram(col='red', fill='blue', binwidth=0.05) + xlab("12 hourly standard deviations of Bitumen Content, % (By weight)") + ylab("Frequency") + ggtitle("Histogram of 12 hourly Bootstrap St. Devs of Bitumen Content, % (By weight)")
+```
+
+
+```{r}
+ggplot(bootstrap_samples, aes(x = hr24_sd)) + geom_histogram(col='red', fill='blue', binwidth=0.05) + xlab("24 hourly standard deviations of Bitumen Content, % (By weight)") + ylab("Frequency") + ggtitle("Histogram of 24 hourly Bootstrap St. Devs of Bitumen Content, % (By weight)")
+```
+
+
+
+```{r}
+ggplot(bootstrap_samples, aes(x = sd_ratio)) + geom_histogram(col='red', fill='blue', binwidth=0.02) + xlab("Ratio of 12 hourly and 24 hourly St. Devs of Bitumen Content") + ylab("Frequency") + ggtitle("Histogram of Ratio of Bootstrapped 12 and 24 hourly St. Devs of Bitument Content")
+```
+
+
+```{r}
+ggplot(bootstrap_samples, aes(x = sd_difference)) + geom_histogram(col='red', fill='blue', binwidth=0.1) + xlab("Difference of 12 hourly and 24 hourly St. Devs of Bitumen Content") + ylab("Frequency") + ggtitle("Histogram of Difference of Bootstrapped 12 and 24 hourly St. Devs of Bitument Content")
+```
+
+
+```{r}
+qdata(~mean_difference, c(0.025, 0.975), data=bootstrap_samples) #95% confidence interval
+```
+
+
+
+$Difference\ of\ means = 0$ lies within $95\%$ confidence interval.
+
+```{r}
+data =qdata(~sd_ratio, c(0.025, 0.975), data=bootstrap_samples) #95% confidence interval
+#data[1,1]
+#data[2,1]
+data
+```
+
+
+
+$Ratio\ of\ st. devs = 1$ lies within $95\%$ confidence interval.
+
+```{r}
+qdata(~sd_difference, c(0.025, 0.975), data=bootstrap_samples) #95% confidence interval
+```
+
+
+
+$Difference\ of\ st. devs = 0$ lies within $95\%$ confidence interval.
+
+
+
+It must be noted that accuracy and precission are important on monthly basis, therefore, the confidence interval for each month in 2019 was determined.
+
+```{r}
+tail(FrothSampleData,3)
+```
+
+
+
+
+```{r}
+data = FrothSampleData %>% filter(year==2019,month==1)
+length(data$Bitumen)
+```
+
+
+
+```{r}
+N = 8 # iterate the loop over the months in the year 2019
+C = numeric(N) # keeps the count of data 
+
+# first boot strap data frame 
+data = FrothSampleData %>% filter(year==2019,month==1)
+C[1]=length(data$Bitumen)
+n12hrs = C[1]
+n24hrs = C[1]%/%2
+n12hrs
+n24hrs
+Nreps = 10000
+hr12_means = numeric(Nreps) 
+hr12_sd = numeric(Nreps)
+hr24_means = numeric(Nreps)
+hr24_sd = numeric(Nreps)
+mean_difference= numeric(Nreps)
+sd_ratio = numeric(Nreps)
+sd_difference = numeric(Nreps)
+for(i in 1:Nreps)
+{
+hr12_means[i] = mean(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+hr24_means[i] = mean(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+hr12_sd[i]= sd(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+hr24_sd[i] =sd(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+mean_difference[i] = hr12_means[i]- hr24_means[i]
+sd_ratio[i]=hr12_sd[i]/hr24_sd[i]
+sd_difference[i]=hr12_sd[i]-hr24_sd[i]
+}
+bootstrap_samples = data.frame(mean_difference,sd_ratio,sd_difference)
+bootstrap_samples_all=data.frame(bootstrap_samples)
+col1 =paste("Month_",1)
+col2 =paste(col1,".mean_difference")
+col3 =paste(col1,".sd_ratio")
+col4 =paste(col1,".sd_difference")
+colnames(bootstrap_samples_all) <- c(col2,col3,col4)
+
+# appending together months bootstrap data frames.
+for (j in 2:N)
+{
+  data = FrothSampleData %>% filter(year==2019,month==j)
+  C[j]=length(data$Bitumen)
+  n12hrs = C[j]
+  n24hrs = C[j]%/%2
+  Nreps = 10000
+  hr12_means = numeric(Nreps) 
+  hr12_sd = numeric(Nreps)
+  hr24_means = numeric(Nreps)
+  hr24_sd = numeric(Nreps)
+  mean_difference= numeric(Nreps)
+  sd_ratio = numeric(Nreps)
+  sd_difference = numeric(Nreps)
+  for(i in 1:Nreps)
+  {
+  hr12_means[i] = mean(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+  hr24_means[i] = mean(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+  hr12_sd[i]= sd(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+  hr24_sd[i] =sd(sample(FrothSampleData$Bitumen, n12hrs, replace=TRUE))
+  mean_difference[i] = hr12_means[i]- hr24_means[i]
+  sd_ratio[i]=hr12_sd[i]/hr24_sd[i]
+  sd_difference[i]=hr12_sd[i]-hr24_sd[i]
+  }
+  bootstrap_samples = data.frame(mean_difference,sd_ratio,sd_difference)
+  col1 =paste("Month_",j)
+  col2 =paste(col1,".mean_difference")
+  col3 =paste(col1,".sd_ratio")
+  col4 =paste(col1,"sd_difference")
+  #name = c(col1,col2,col3)
+  nextcol <-  data.frame(bootstrap_samples)
+  colnames(nextcol) <- c(col2,col3,col4) # rename the comlum
+  bootstrap_samples_all <- cbind(bootstrap_samples_all, nextcol)
+} 
+head(bootstrap_samples_all, 3)
+tail(bootstrap_samples_all, 3)  
+ 
+``` 
+
+
+
+```{r}
+# filtering for monthly mean difference between 12hrs vs 24hr samples monthly mean comparasions
+monthly_mean_difference_bootstraps = bootstrap_samples_all [c("Month_ 1 .mean_difference", "Month_ 2 .mean_difference", "Month_ 3 .mean_difference", "Month_ 4 .mean_difference", "Month_ 5 .mean_difference", "Month_ 6 .mean_difference", "Month_ 7 .mean_difference", "Month_ 8 .mean_difference")]
+head(monthly_mean_difference_bootstraps)
+monthly.bootstrap.mean.difference.graph <- function(df, na.rm = TRUE, ...)
+  {
+   for (i in names(df))
+        {
+
+         plot= ggplot(df[i],aes(df[,i]))+ geom_histogram(col='red', fill='blue',bins=50)+
+         scale_y_continuous("Frequency") +
+         scale_x_continuous("Difference OF 12hr Sample Mean and 24hrs Samples Mean") +
+         ggtitle(paste("Year 2019 ",names(df[i]),sep=''))
+         print(plot)
+      }
+}
+monthly.bootstrap.mean.difference.graph (monthly_mean_difference_bootstraps)
+```
+
+
+
+
+Now creating table of confidence intervals of all months.
+
+```{r echo=TRUE}
+# filtering for monthly mean difference between 12hrs vs 24hr samples monthly mean comparasions
+monthly_mean_difference_bootstraps = bootstrap_samples_all [c("Month_ 1 .mean_difference", "Month_ 2 .mean_difference", "Month_ 3 .mean_difference", "Month_ 4 .mean_difference", "Month_ 5 .mean_difference", "Month_ 6 .mean_difference", "Month_ 7 .mean_difference", "Month_ 8 .mean_difference")]
+monthly_sd_difference_bootstraps = bootstrap_samples_all [c("Month_ 1 .sd_difference", "Month_ 2 sd_difference", "Month_ 3 sd_difference", "Month_ 4 sd_difference", "Month_ 5 sd_difference", "Month_ 6 sd_difference", "Month_ 7 sd_difference", "Month_ 8 sd_difference")]
+monthly_sd_ratio_bootstraps = bootstrap_samples_all [c("Month_ 1 .sd_ratio", "Month_ 2 .sd_ratio", "Month_ 3 .sd_ratio", "Month_ 4 .sd_ratio", "Month_ 5 .sd_ratio", "Month_ 6 .sd_ratio", "Month_ 7 .sd_ratio", "Month_ 8 .sd_ratio")]
+head(monthly_mean_difference_bootstraps)
+month = c('Jan','Feb','March','April','May','June','July','Aug')
+mean_difference_per2.5 = numeric(N)
+mean_difference_per97.5 =numeric(N)
+SD_difference_per2.5 = numeric(N)
+SD_difference_per97.5 =numeric(N)
+SD_ratio_per2.5 = numeric(N)
+SD_ratio_per97.5 =numeric(N)
+for(i in 1:N)
+{
+data=qdata(monthly_mean_difference_bootstraps[,i],c(.025,.975))
+mean_difference_per2.5[i]=round(data[1,1],digits=2)
+mean_difference_per97.5[i]=round(data[2,1],digits=2)
+
+data=qdata(monthly_sd_difference_bootstraps[,i],c(.025,.975))
+SD_difference_per2.5[i]=round(data[1,1],digits=2)
+SD_difference_per97.5[i]=round(data[2,1],digits=2)
+
+data=qdata(monthly_sd_ratio_bootstraps[,i],c(.025,.975))
+SD_ratio_per2.5[i]=round(data[1,1],digits =2)
+SD_ratio_per97.5[i]=round(data[2,1],digits =2)
+
+
+}
+MonthlyCI = data.frame(month,mean_difference_per2.5,mean_difference_per97.5,SD_difference_per2.5,SD_difference_per97.5,SD_ratio_per2.5,SD_ratio_per97.5)
+head(MonthlyCI,8)
+#print.data.frame(MonthlyCI)
+formattable(MonthlyCI)
+
+````
+
+
+
+## Permutation testing## 
+
+Conducting permutation testing on a monthly basis for following hypotheses:
+
+$$H_0 : \mu_{12hrs} = \mu_{24hrs}\ or\ H_0 : \mu_{12hrs} - \mu_{24hrs} = 0$$
+$$H_A : \mu_{12hrs} \neq \mu_{24hrs}$$
+
+```{r}
+N = 8 # iterate the loop over the months in the year 2019
+c = numeric(N) # keeps the count of data 
+
+# first boot strap data frame 
+pdata = FrothSampleData %>% filter(year==2019,month==1)# filtering only 2019 data
+c[1]=length(pdata$Bitumen) # determining number of data data avialble 
+n12hrs = c[1] # original number of samples 
+n24hrs = c[1]%/%2 # proposed number of samples will be half very month, taken from same population
+n12hrsdata = sample(pdata$Bitumen, n12hrs, replace=TRUE)
+n24hrsdata = sample(pdata$Bitumen, n24hrs, replace=TRUE)
+group = c(rep("12hr",n12hrs),rep("24hr",n24hrs))
+s.bitumen = c(n12hrsdata,n24hrsdata)
+totalsample =data.frame(group,s.bitumen)
+head(totalsample)
+```
+
+
+
+```{r}
+tail(totalsample)
+```
+
+
+
+```{r}
+ggplot(data=totalsample, aes(x = group, y = s.bitumen)) + geom_boxplot(col='red', fill='blue') + xlab("Frequency") + ylab("Bitumen Content, % (By weight)") + coord_flip() +ggtitle("Froth Bitumen Content : 12hrs to 24hrs")
+
+```
+
+
+```{r}
+obsdiff = mean(~s.bitumen, data=filter(totalsample,group=="12hr"))-mean(~s.bitumen, data=filter(totalsample,group=="24hr"))
+
+Np = (10000-1) # number of repetation for boot strap.
+p_mean_difference= numeric(Np)
+for(i in 1:Np)
+{
+index = sample(n12hrs+n24hrs,n12hrs, replace=FALSE)
+p_mean_difference[i] = mean(s.bitumen[index])-mean(s.bitumen[-index])
+}
+
+```
+
+```{r}
+# Used hist command here as the outcome is a vector and wanted to incorporate the red vertical line
+hist(p_mean_difference, xlab="Difference Between Mean of Females and Mean of Males", ylab="Frequency", main="Outcome of 10000 Permutation Tests", col='blue')
+abline(v = obsdiff, col="red")
+```
+
+
+
+```{r}
+if( obsdiff <0){
+  v = obsdiff
+}else {v = -obsdiff}
+(sum(p_mean_difference <=v) + sum(p_mean_difference>= (-1*v)))/(Np)  #computes P-value
+```
+
+
+
+```{r}
+# Developing table for each Month in 2019, with Xobs, and its corresponding P-value.
+
+N = 8 # iterate the loop over the months in the year 2019
+c = numeric(N) # keeps the count of data 
+p.values = numeric(N)
+Xobs = numeric(N) # keeps the observed values 
+for (j in 1:N)
+  {
+# first boot strap data frame 
+  pdata = FrothSampleData %>% filter(year==2019,month==j)# filtering only 2019 data
+  c[j]=length(pdata$Bitumen) # determining number of data data avialble 
+  n12hrs = c[j] # original number of samples 
+  n24hrs = c[j]%/%2 # proposed number of samples will be half very month, taken from same population
+  n12hrsdata = sample(pdata$Bitumen, n12hrs, replace=TRUE)
+  n24hrsdata = sample(pdata$Bitumen, n24hrs, replace=TRUE)
+  group = c(rep("12hr",n12hrs),rep("24hr",n24hrs))
+  s.bitumen = c(n12hrsdata,n24hrsdata)
+  totalsample =data.frame(group,s.bitumen)
+  #head(totalsample)
+  Xobs[j] = mean(~s.bitumen, data=filter(totalsample,group=="12hr"))-mean(~s.bitumen,   data=filter(totalsample,group=="24hr"))
+
+   Np = (10000-1) # number of repetation for boot strap.
+   p_mean_difference= numeric(Np)
+   for(i in 1:Np)
+    {
+    index = sample(n12hrs+n24hrs,n12hrs, replace=FALSE)
+    p_mean_difference[i] = mean(s.bitumen[index])-mean(s.bitumen[-index])
+    }
+   if( Xobs[j] <0){
+    v = Xobs[j]
+    }else {v = -Xobs[j]}
+    p.values [j]=(sum(p_mean_difference <=v) + sum(p_mean_difference>= (-1*v)))/(Np)  #computes P-value
+}
+Hypothesis_testing_table = data.frame(month,Xobs,p.values) 
+#head(Hypothesis_testing_table,8)
+formattable(Hypothesis_testing_table)
+```
+
+
+
+## Summarize the results 
+
+Based on the analyses performed above, we can conclude follwoing results:
+
+-Based on bootstrapped resampling of entire dataset, it can be concluded that the $95\%$ confidence intervals of difference of means, difference and ratio of standard deviations along with their respective $P-values$ suggest that there is no siginificant diiference on the results even if the sampling frequency is changed from 12hrs to 24 hrs
+
+-Same analysis approach was applied on monthly basis for 2019. Again, the $95\%$ confidence intervals of difference of means, difference and ratio of standard deviations along with their respective $P-values$ for each month, suggest that there is no siginificant diiference on the results even if the sampling frequency is changed from 12hrs to 24 hrs
+
+-Permutation hypothesis testing was also carried out and it also proved through observed difference and empirical $P-values$ that there is no siginificant difference in sampling results even if the sampling frequency is increased from 12 hrs to 24 hrs.

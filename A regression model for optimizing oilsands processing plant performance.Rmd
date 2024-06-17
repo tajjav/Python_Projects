@@ -1,0 +1,833 @@
+---
+title: Factors that affect solids content in bitumen froth from a Primary Extraction
+  Unit in Oil Sands Mining
+output:
+  html_document: default
+  pdf_document: default
+---
+
+Group members:
+
+  1. Kamran Imam
+  2. Tauqeer Javaid 
+
+# Abstract
+The purpose of this project is to understand an Oil Sands Extraction plant, particularly the relationship between the different processes & ore parameters and the **solids content** in the froth that comes out of the Primary Extraction Unit. A high solids content in the froth is undesirable and if not managed properly, it could lead to poor oil quality delivery (not meeting the market specifications) with costly consequences. So, operators must be able to manipulate process parameters in the froth treatment plant, in order to avoid loss of production and lower recovery.
+
+A generalized linear model composed of 8 quantitative variables describing the Plant Processes is presented for predicting whether the solids % in the froth will exceed 15% (maximum spec limit) or not. This  model shows an AUC of 0.623 and an accuracy of 57% when using a test dataset. The results indicate that, compared to a fullmodel, the final model chosen reduces the residual deviance. More imporantly, this improvement is statisticallly significant at p = 0.001. This suggests that the final model does provide an improved model fit. Although it may appear some of the main effects coefficient are not significant based on t-test, we need to keep them because their corresponding interaction terms are significant.
+
+Although the preliminary model's explained variance is still relatively low (prediction accuracy 57%) it helps to provide valuable insights on which of the 26 variables have higher importance for predicting the solids content and their interactions, helping to narrow down future investigation areas. 
+
+
+# 1. Background
+Vast amount of oil sands resource exist in Alberta, with the majority of oil being extracted using oil sands mining process. Oil sands are either loose sands or partially consolidated sandstone containing a naturally occurring mixture of sand, clay, and water, saturated with a dense and extremely viscous form of petroleum technically referred to as bitumen (or colloquially as tar). Oil sands typically contain 10-14 % oil, about 2-4% water and rest is sand. 
+
+The oil sands are close to the surface, so they can be mined and hauled to a processing plant for oil extraction. Hot water extraction process is used to recover oil, from the oil sands ore. The ore is crushed, and hot water is added to make a slurry mixture. The oil sands slurry is transported to Extraction plant via large pipeline and pumps. Oil is liberated from sands and air is added to aerate the oil in hydrotransport lines so that oil can float in the Extraction plant. The oil slurry is discharged to a big conical vessel, commonly known as Primary Separation Cells (PSC), in the Extraction plant. The aerated oil separates and floats to the top of the vessel and heavy sand sinks to the bottom. The bottom is known as tailings which are pumped to a tailings pond. Oil product is known as **oil froth** which flows out from the top of the PSC. The output froth typically contains about 60% oil, 15% sands and 35% water. 
+
+```{r pressure, echo=FALSE, fig.cap="Oil Sands Mining Operations Overview.", out.width = '100%'}
+knitr::include_graphics("./ProcessOverview.JPG")
+```
+
+The plants PSC's are designed to recover oil in range of 90% while the rest is lost to the tailings. There are many process/ plants parameters that affect the oil recovery. Operators manipulate the process parameters on a regular basis to maximize the oil recovery. Maximization of the oil recovery helps to maximize production and increase the profitability of the oil sand business, while minimizes the hydrocarbons disposed in the tailings ponds. 
+
+In this project, we will attempt to understand the correlation between different PSC process and ore parameters that could affect the solids content in the froth, that is being produced out of Oil Sands Extraction plant. High solids content in froth if not managed could lead to poor oil quality out of froth treatment plant (not meeting the market specification). So, operators must manipulate process parameters in froth treatment plant, in order to avoid loss of production and lower recovery.
+
+in this project, the following questions will be explored with the help of statistical modeling:
+
+ 1.	Are there any levers/controlling variables in the plant PSC that could explain the variance observed in % solids in Extraction froth product?
+ 
+ 2.	Are there any properties of the input oil sands ore, that could help us predict undesirable high solids events (>15% solids in the Extraction froth product)?
+These questions will help us to identify controllable factors that could affect the froth solids content. Eventually, those parameters could be used in the plant to minimize the solids in froth and maximize plant recovery and production. 
+
+This project is important to our group as all the group members are working in the Oil and Gas sector. We live in Alberta, which has abundance of oil sands resources. Improving the efficiency of the oil recovery process in the Imperial Oil plants will assist in generating higher profitability while reducing costs and hydrocarbons disposed in the tailings ponds, with learnings that could be applied to other oil sands mining assets. Profiting businesses will generate economic opportunities of Alberta.
+
+
+# 2. Methodology
+Real data from an Extraction Plant  and input ore  will be used to model froth solids output.
+
+## Data Description Collection 
+The data is from Imperial Kearl oil sands plant. We have permission to use the data for analysis. The data is tabulated in the Excel file named **PlantData.xlxs**, which has three tabs, Actual, Data, NormalData, and Variables Mapping. The only difference between  “Actual” and “Data” tabs is that the “Actual” tab has time stamps of the data observations. In the "Normal" Data tab, variables are scaled between zero and one, where zero is the minimum value for the variable, and one is the maximum in the plant operating range. This is done to understand the relative impact of each variable on the response variable. The “Variable Mapping” tab, shows the definitions of the Y and X variables used. The columns have predictors Xs (ore and process parameters) and the predicted variable Y (froth solids out of extraction plant). 
+
+Oil Sand ore properties (daily average fines content and overall particle size of ore solids, variables $X_{26}$ and $X_{27}$ are perceived to impact the solids in froth product, so they are used in the model development.
+
+The Extraction plant has different temperature, flow, pressure, density, level, grade sensors located in key process units. The Extraction plant has three key process units: hydrotransport, PSC (primary separation cells) and flotation cells. It is perceived that some of the plant parameters affect the froth solids content. The process parameters from the sensors are stored in a database called “PI Server”. Every 1 hr data was collected by querying the PI database and then saved in excel format (starting in January 2018). As the froth samples were collected on 12 hrs basis, and process parameter values were collected every hour. The process parameters were averaged over 12 hours, to ensure 12hrs activity in the plant was captured. Daily average values of these sensors are tabulated as $X_1$ to $X_{25}$ variables. 
+
+## Variables Description
+
+*  $Y$:Froth Solids(Min:10 Max:30 Unit: %)
+*  $X_1$:PSC-Middlings Temp (Min:40 Max:60 Unit: Degree C)
+*  $X_2$:PSC-Middlings Density (Min:1050 Max:1250 Unit: kg/m3)
+*  $X_3$:Midds Flow (Min:2000 Max:6000 Unit: m3ph)
+*  $X_4$:Flot Cells-Tails-Flow(Min:2000 Max:6000 Unit: m3ph)
+*  $X_5$:Flot Cells-Tails-Density(Min:1050 Max:1400 Unit: kg/m3)
+*  $X_6$:Flot Cells-Tails-Other comp.(Min:10 Max:100 Unit: %)
+*  $X_7$:Flot Cells-Tails-Solids (Min:10 Max:70 Unit: %)
+*  $X_8$:Flot Cells-Tails-PSD(Min:10 Max:90 Unit: %)
+*  $X_9$:Flot Cells-Froth-Flow(Min:100 Max:1200 Unit: m3ph)
+*  $X_{10}$:Flot Cells-Froth-Density (Min:600 Max:1100 Unit: kg/m3)
+*  $X_{11}$:Flot Cells-Froth-Temp(Min:20 Max:60 Unit: Degree C)
+*  $X_{12}$:Flot Cells-3120 Pump-Pressure(Min:100 Max:600 Unit: kpag)
+*  $X_{13}$:PSC -Interface-Level(Min:50 Max:100 Unit: %)
+*  $X_{14}$:PSC -Underwash-Temp(Min:30 Max:80 Unit: Degree C)
+*  $X_{15}$:PSC -Underwash -Flow(Min:200 Max:1200 Unit: m3ph)
+*  $X_{16}$:PSC -Dilution -Temp(Min:10 Max:60 Unit: Degree C)
+*  $X_{17}$:PSC -Dilution -Flow (Min:0 Max:5000 Unit: m3ph)
+*  $X_{18}$:PSC -Froth Launder-Temperature(Min:20 Max:80 Unit: Degree C)
+*  $X_{19}$:PSC -Froth Laundar-Level(Min:2 Max:50 Unit: %)
+*  $X_{20}$:Dearator-Oulet-Temp(Min:40 Max:90 Unit: Degree C)
+*  $X_{21}$:OPP K40(Min:5 Max:15 Unit: csp)
+*  $X_{22}$:Total Ore Rate(Min:3000 Max:12000 Unit: TPH)
+*  $X_{23}$:Total HT Rate(Min:3000 Max:12000 Unit: m3ph)
+*  $X_{24}$:Combined HT Temp(Min:40 Max:70 Unit: Degree C)
+*  $X_{25}$:Combined HT Density(Min:1300 Max:1700 Unit: kg/m3)
+*  $X_{26}$:ORE-Crusher -D50(Min:50 Max:400 Unit: microns)
+*  Quarter: represents season when observation was recorded ($Q_1$, $Q_2$, $Q_3$, $Q_4$)
+
+## Data Modeling Method.
+
+Generalized linear regression technique will be used to model froth solids content. Froth solids content is the response variable (binomial, 1=sand exceeds 15%, 0=sand is equal or lower than 15%) and the ore and plant process parameters are the predictor variables.
+
+Modeling steps.
+1. First, Exploratory data analysis was performed, to visualize value ranges of variables, detect potential outliers and establish preliminary correlations among variables.
+
+2. Variables which seemed to be correlated with Y=sand%, were converted into categorical variables and further investigated using Independence Tests: Pearson correlation, MH statistic and P-value.
+
+3. A Sampling analysis was performed to study the impact of the sampling methods (total dataset samples = 596, tested Cluster sampling, SRS and Stratified sampling) on estimation results. This could have impact on the business in terms of sampling costs, but also on the modeling stage and the sample selection for training/testing the model.
+
+4. Started with multiple linear regression modeling. (Y = Froth Solids as function of different plant and ore property variables X)
+
+5. After finding the best fit model, assumption of the models were tested.
+
+6. The model failed residuals normality and Homoscedasticity tests
+
+7. GLM multiple logistic model was used for this analysis as
+    a. Does not assume residuals normality and homoscedasticity
+    b. Also, as Y is continuous response variable  a categorial Y2 variable was created
+    c. Y2 = 1 (on spec, Y<15%) and Y2=0 ( off spec, Y>10%) 
+    d. All the X variables were normalized between max and min values
+    e. The whole data set was divided into training and testing subsets (80/20)
+    f. GLM model with family binomial and logistic link, was run with all 27 variables. 
+    g. Variables with p-values <0.05 were removed from the model as they were not significant
+    h. Interaction terms were tested and included in the model.
+    i. Model Evaluation and diagnostics was conducted ( #Likelihood Ratio Test, # multicollinearity was tested using VIF values, # model prediction accuracy was tested using confusion matrix method)
+
+
+
+
+# 3. Main Results of the Analysis
+
+## 3.1 Exploratory Data Analysis
+The charts below constitute some basic exploratory analysis, to visualize distributions of the predicted variable and the predictors, as well identifying potential correlations between them. Some of the basic plots used include histogram, scatter plots, violin plots.
+
+```{r}
+library(survey)
+library(sampling)
+library(readxl)
+plantdata = read_excel('./PlantData.xlsx', sheet='NormalData')
+head(plantdata)
+```
+
+
+### Data Exploration:
+```{R}
+plot(plantdata[,3:8])
+
+```
+
+```{R}
+plot(plantdata[,9:14])
+
+```
+
+```{R}
+plot(plantdata[,15:20])
+
+```
+
+
+```{R}
+plot(plantdata[,21:25])
+
+```
+
+```{R}
+plot(plantdata[,26:29])
+
+```
+
+```{r}
+library(ggplot2)
+library(GGally)
+ggcorr(plantdata, nbreaks = 4, palette = "RdGy")
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(plantdata, aes(x=Y))+geom_histogram(aes(y=..density..),color="darkblue", fill="skyblue")+geom_density(alpha=0.2, color="darkblue", fill="pink")+geom_vline(aes(xintercept=mean(plantdata$Y)), color = "darkgreen", linetype="dashed", size=2) + labs(title="Histogram & Density Plots for Normalized Solids Percentage", x = "Normalized Solids Percentage(%)", y = "Frequency")+annotate(geom="text", x=0.1, y = 7.5, label="Standard Deviation = 0.06, Mean = 0.24", color="red")
+```
+
+The distrbution appears close to a normal distribution. This condition of normality of the Y variable can be further confirmed by qq-plot below.
+The data mainly falls on a straight line with some minor deviation from the ends and hence can be assumed a normal distribution.
+
+```{r}
+ggplot(plantdata, aes(sample=Y))+stat_qq()
+```
+
+The scatter plots below, explore in further detail potential correlation of a few input variables of interest with the predictor Y. Some weak trends are observed, but non of them suggest strong relationships.
+```{r}
+#For toggle view
+ggplot(plantdata, aes(x=Y))+geom_point(aes(y=X10),color="red")+labs(x = "Normalized Solids Percentage(%)", y = "Flot Cells Froth Density (kg/m3)")
+ggplot(plantdata, aes(x=Y))+geom_point(aes(y=X13),color="green")+labs(x = "Normalized Solids Percentage(%)", y = "PSC Interface Level (%)")
+ggplot(plantdata, aes(x=Y))+geom_point(aes(y=X20),color="orange")+labs(x = "Normalized Solids Percentage(%)", y = "Dearator Outlet Temperature (Deg C)")
+ggplot(plantdata, aes(x=Y))+geom_point(aes(y=X26),color="purple")+labs(x = "Normalized Solids Percentage(%)", y = "Ore Crusher D50 (microns)")
+```
+
+
+```{r}
+#For plotting on a single plot view
+par(mfrow = c(2,2))
+plot(plantdata$Y, plantdata$X10, col="red", xlab = "Normalized Solids Percentge (%)", ylab = "Flot Cells Froth Density (kg/m3)")
+plot(plantdata$Y, plantdata$X13, col="green", xlab = "Normalized Solids Percentge (%)", ylab = "PSC Interface Level (%)")
+plot(plantdata$Y, plantdata$X20, col="orange", xlab = "Normalized Solids Percentge (%)", ylab = "Dearator Outlet Temperature (Deg C)")
+plot(plantdata$Y, plantdata$X26, col="purple", xlab = "Normalized Solids Percentge (%)", ylab = "Ore Crusher D50 (microns)")
+```
+
+The violin plots below give a representation of the number of observation pairs and their relative variation ranges.
+
+
+```{r}
+ggplot(plantdata, aes(y=Y))+geom_violin(aes(x=X26),color="blue", fill = "blue")+labs(x = "Ore Crusher D50 (microns)", y = "Normalized Solids Percentage(%)")+geom_violin(aes(x=X10),color="red", fill = "red")+labs(x = "Flot Cells Froth Density (kg/m3)", y = "Normalized Solids Percentage(%)")+geom_violin(aes(x=X20),color="orange", fill = "orange")+labs(x = "Dearator Outlet Temperature (Deg C)", y = "Normalized Solids Percentage(%)")
+```
+
+```{r}
+ggplot(plantdata, aes(y=Y))+geom_violin(aes(x=X13),color="green", fill = "green")+labs(x = "PSC Interface Level (%)", y = "Normalized Solids Percentage(%)")
+```
+
+
+
+## 3.2 Categorical Data Analysis
+Following four variables X10, X13, X20 and X26  were first converted in multinomial variables with these variables divided into six (06) equal sized bins based on minimum and maximum values of each variable.
+
+```{r}
+# We order the dataset as per X10
+DATA<-plantdata[order(plantdata$X10),]
+# We group the data as per X10
+l1=sum(as.numeric(plantdata$X10<=0.47))
+l2=sum(as.numeric(plantdata$X10<=0.54))-l1
+l3=sum(as.numeric(plantdata$X10<=0.61))-l1-l2
+l4=sum(as.numeric(plantdata$X10<=0.68))-l1-l2-l3
+l5=sum(as.numeric(plantdata$X10<=0.75))-l1-l2-l3-l4
+l6=dim(plantdata)[1]-l1-l2-l3-l4-l5
+X10_level<-c(rep('0.40-0.47', l1), rep('0.47-0.54', l2), rep('0.54-0.61', l3), rep('0.61-0.68', l4), rep('0.68-0.75', l5), rep('0.75-0.82', l6))
+plantdata<-cbind(plantdata, X10_level)
+head(plantdata)
+```
+
+```{r}
+# We order the dataset as per X13
+DATA<-plantdata[order(plantdata$X13),]
+# We group the data as per X13
+l1=sum(as.numeric(plantdata$X13<=0.27))
+l2=sum(as.numeric(plantdata$X13<=0.37))-l1
+l3=sum(as.numeric(plantdata$X13<=0.47))-l1-l2
+l4=sum(as.numeric(plantdata$X13<=0.57))-l1-l2-l3
+l5=sum(as.numeric(plantdata$X13<=0.67))-l1-l2-l3-l4
+l6=dim(plantdata)[1]-l1-l2-l3-l4-l5
+X13_level<-c(rep('0.17-0.27', l1), rep('0.27-0.37', l2), rep('0.37-0.47', l3), rep('0.47-0.57', l4), rep('0.57-0.67', l5), rep('0.67-0.77', l6))
+plantdata<-cbind(plantdata, X13_level)
+head(plantdata)
+```
+
+```{r}
+# We order the dataset as per X20
+DATA<-plantdata[order(plantdata$X20),]
+# We group the data as per X20
+l1=sum(as.numeric(plantdata$X20<=0.60))
+l2=sum(as.numeric(plantdata$X20<=0.65))-l1
+l3=sum(as.numeric(plantdata$X20<=0.70))-l1-l2
+l4=sum(as.numeric(plantdata$X20<=0.75))-l1-l2-l3
+l5=sum(as.numeric(plantdata$X20<=0.80))-l1-l2-l3-l4
+l6=dim(plantdata)[1]-l1-l2-l3-l4-l5
+X20_level<-c(rep('0.55-0.60', l1), rep('0.60-0.65', l2), rep('0.65-0.70', l3), rep('0.70-0.75', l4), rep('0.75-0.80', l5), rep('0.80-0.85', l6))
+plantdata<-cbind(plantdata, X20_level)
+head(plantdata)
+```
+
+```{r}
+# We order the dataset as per X26
+DATA<-plantdata[order(plantdata$X26),]
+# We group the data as per X26
+l1=sum(as.numeric(plantdata$X26<=0.31))
+l2=sum(as.numeric(plantdata$X26<=0.38))-l1
+l3=sum(as.numeric(plantdata$X26<=0.45))-l1-l2
+l4=sum(as.numeric(plantdata$X26<=0.52))-l1-l2-l3
+l5=sum(as.numeric(plantdata$X26<=0.59))-l1-l2-l3-l4
+l6=dim(plantdata)[1]-l1-l2-l3-l4-l5
+X26_level<-c(rep('0.24-0.31', l1), rep('0.31-0.38', l2), rep('0.38-0.45', l3), rep('0.45-0.52', l4), rep('0.52-0.59', l5), rep('0.59-0.66', l6))
+plantdata<-cbind(plantdata, X26_level)
+head(plantdata)
+```
+
+Chi-squared test was performed to check the independence of $X_{10}$ with $Y_2$
+
+```{r}
+library(questionr)
+chi_test_X10<-table(plantdata$Y2, plantdata$X10_level)
+chi_test_X10
+chisq.test(chi_test_X10)
+```
+
+Since some entities are zero, we get a warning message. To improve accuracy of Chi-squared approximation we add first three and last two columns.
+
+```{r}
+# To improve accuracy of Chi-squared approximation we add first three and last two columns
+chi_test_X10<-cbind(chi_test_X10[,1]+chi_test_X10[,2]+chi_test_X10[,3],chi_test_X10[,4],chi_test_X10[,5]+chi_test_X10[,6])
+chi_test_X10
+chisq.test(chi_test_X10)
+```
+
+Based on small p-value, we reject null hypothesis and accept that $Y_2$ and $X_{10}$ are dependant.
+
+Now we perform cell residuals testing to find out which entity deviates the most from independence assumption.
+
+```{r}
+# To check which entry deviates the most from independence assumption
+chisq.residuals(chi_test_X10, std=TRUE)
+```
+
+Chi-squared test was performed to check the independence of $X_{13}$ with $Y_2$
+
+```{r}
+chi_test_X13<-table(plantdata$Y2, plantdata$X13_level)
+chi_test_X13
+chisq.test(chi_test_X13)
+```
+
+Since some entities are zero, we get a warning message. To improve accuracy of Chi-squared approximation we add first three columns.
+
+```{r}
+# To improve accuracy of Chi-squared approximation we add first three columns
+chi_test_X13<-cbind(chi_test_X13[,1]+chi_test_X13[,2]+chi_test_X13[,3],chi_test_X13[,4],chi_test_X13[,5],chi_test_X13[,6])
+chi_test_X13
+chisq.test(chi_test_X13)
+```
+
+Based on small p-value, we reject null hypothesis and accept that $Y_2$ and $X_{13}$ are dependant.
+
+Now we perform cell residuals testing to find out which entity deviates the most from independence assumption.
+
+```{r}
+# To check which entry deviates the most from independence assumption
+chisq.residuals(chi_test_X13, std=TRUE)
+```
+
+Chi-squared test was performed to check the independence of $X_{20}$ with $Y_2$
+
+```{r}
+chi_test_X20<-table(plantdata$Y2, plantdata$X20_level)
+chi_test_X20
+chisq.test(chi_test_X20)
+```
+
+Since some entities are zero, we get a warning message. To improve accuracy of Chi-squared approximation we add first three and last two columns.
+
+```{r}
+# To improve accuracy of Chi-squared approximation we add first two and last two columns
+chi_test_X20<-cbind(chi_test_X20[,1]+chi_test_X20[,2],chi_test_X20[,3],chi_test_X20[,4],chi_test_X20[,5]+chi_test_X20[,6])
+chi_test_X20
+chisq.test(chi_test_X20)
+```
+
+Based on small p-value, we reject null hypothesis and accept that $Y_2$ and $X_{20}$ are dependant.
+
+Now we perform cell residuals testing to find out which entity deviates the most from independence assumption.
+
+```{r}
+# To check which entry deviates the most from independence assumption
+chisq.residuals(chi_test_X20, std=TRUE)
+```
+
+Chi-squared test was performed to check the independence of $X_{26}$ with $Y_2$
+
+```{r}
+chi_test_X26<-table(plantdata$Y2, plantdata$X26_level)
+chi_test_X26
+chisq.test(chi_test_X26)
+```
+
+Since some entities are zero, we get a warning message. To improve accuracy of Chi-squared approximation we add first two and last two columns.
+
+```{r}
+# To improve accuracy of Chi-squared approximation we add first two and last two columns
+chi_test_X26<-cbind(chi_test_X26[,1]+chi_test_X26[,2],chi_test_X26[,3],chi_test_X26[,4],chi_test_X26[,5]+chi_test_X26[,6])
+chi_test_X26
+chisq.test(chi_test_X26)
+```
+
+Based on small p-value, we reject null hypothesis and accept that $Y_2$ and $X_{26}$ are dependant.
+
+Now we perform cell residuals testing to find out which entity deviates the most from independence assumption.
+
+```{r}
+# To check which entry deviates the most from independence assumption
+chisq.residuals(chi_test_X26, std=TRUE)
+```
+
+Now, in order to perform Mantel-Hainszel Test, we create a self defined function below
+
+```{r}
+# A self-defined function to calculate the Mantel-Haenszel statistic, as well as the p-value
+pears.cor=function(table, rscore, cscore)
+{ 
+	dim=dim(table) 
+	rbar=sum(margin.table(table,1)*rscore)/sum(table) 
+	rdif=rscore-rbar 
+	cbar=sum(margin.table(table,2)*cscore)/sum(table) 
+	cdif=cscore-cbar 
+	ssr=sum(margin.table(table,1)*(rdif^2)) 
+	ssc=sum(margin.table(table,2)*(cdif^2)) 
+	ssrc=sum(t(table*rdif)*cdif) 
+	pcor=ssrc/(sqrt(ssr*ssc)) 
+	pcor 
+	M2=(sum(table)-1)*pcor^2
+	M2
+	result=c(pcor, M2, (1-pchisq(M2,1)))
+	result=as.table(result)
+	names(result)=c('Pearson correlation','MH statistic', 'P-Value')
+	result
+} 
+```
+
+**Mantel-Haenszel Test**
+
+```{r}
+pears.cor(chi_test_X10,c(0,1),c(0,1,2))
+```
+
+Based on small p-value, we reject null hypothesis and accept that $Y_2$ and $X_{10}$ are dependant at every strata.
+
+```{r}
+pears.cor(chi_test_X13,c(0,1),c(0,1))
+```
+
+Based on large p-value, we fail to reject null hypothesis that $Y_2$ and $X_{13}$ are independant at every strata.
+
+```{r}
+pears.cor(chi_test_X20,c(0,1),c(0,1))
+```
+
+Based on small p-value, we reject null hypothesis and accept that $Y_2$ and $X_{20}$ are dependant at every strata.
+
+```{r}
+pears.cor(chi_test_X26,c(0,1),c(0,1))
+```
+
+Based on small p-value, we reject null hypothesis and accept that $Y_2$ and $X_{26}$ are dependant at every strata.
+
+
+## 3.3 Sampling
+Samples of the Sand content in the slurry (Y) are typically collected during all the year, with a total of 596 samples in the dataset.  The impact of sampling on the estimation of the total average sand content (Y mean) was investigated testing: Cluster sampling, Simple Random Sampling and Stratified sampling. 
+
+For  cluster sampling, it was assumed that the clusters would be defined as the month in which the samples were collected. Cluster-sampling only a few months as opposed to grabbing samples during the full year could have operational advantages and cost savings, as it could reduce the number of trips to the field. The test consisted in sampling only 3 random months (about 90 samples). This method resulted in a very large variance of the Y_mean estimate, hence it is not recommended. While the population MSB is lower than MSW, the variations existing from month to month are large enough to cause a decrease in precision of the Y_mean estimate, as indicated by the empirical Variance estimation based on 100 tests.
+
+For SRS sampling, aproximately the same number of samples are drawn from the population (n=90) but this time every sample has the same probability of being chosen. Samples are chosen randomly throughout the year. This approach results in a much higher precision of the Y_mean estimate as indicated by the empirical Variance estimation based on 100 tests.
+
+Finally, it was tested whether Stratified sampling would be justified. In this case, the strata was defined as the Quarters when the sample was collected. From previous analysis (Data 603) it was observed a mild seasonality effect, where Sand content was  correlated to Quarter when it was sampled, tending to be higher in the colder months. Hence, the expectation was that when sampling from every season, the precision of the Y_mean estimate could improve. However, this was not the case. the precision of the Y_mean estimate with this sampling method did not improve, hence the extra cost of this method is not considered necessary. Similar results can be achieved by SRS, which generally yields a sample from the full year anyway. It was found that  the population MSB is much smaller than MSW for the Strata, so it Stratified sampling does not make a big difference in this case.
+```{r}
+plantdataraw = read_excel('./PlantData.xlsx', sheet='Data')
+head(plantdataraw)
+```
+
+
+```{r}
+# True population mean sand content
+mean(plantdataraw$Y)
+```
+
+**Cluster Sampling**
+```{r}
+# Month was chosen as the clustering variable, total 19 months
+library(plyr)
+count(plantdataraw, "Month") # show the total number of samples per month
+```
+
+
+```{r}
+# Draw 1 cluster-based sample
+
+n=3 # number of sampled months is 3
+cl=sampling:::cluster(plantdataraw,clustername=c("Month"),size=n,method="srswor")
+one_stg_sample=getdata(plantdataraw, cl)
+head(one_stg_sample)
+
+ti=aggregate(one_stg_sample$Y, by=one_stg_sample["Month"],FUN=sum) # Y totals per cluster sampled
+N=19 # known total number of Months recorded
+M0=596 # known total number of units (ssus) in the population
+Mu=596/N # average ssus per cluster
+```
+
+
+```{r}
+# Estimate population mean based on 1 cluster-based sample
+N/n*sum(ti$x)/M0 # unbiased esimator for population mean (sand % normalized)
+```
+
+
+```{r}
+# Estimate population Y mean Standard Deviation based on 1 cluster-based sample
+vt=sd(ti$x)^2 #sample variance of sampled ti values
+
+N^2*(1-n/N)*vt/(n*M0^2) # population-mean variance estimate
+```
+
+```{r}
+# Now, do empirical Cluster-Based estimation based on 100 tests 
+
+mean_vec<-function(T){
+  esti_mean<-rep(0,T)
+  for (i in 1:T){
+    cl=sampling:::cluster(plantdataraw,clustername=c("Month"),size=n,method="srswor")
+    one_stg_sample=getdata(plantdataraw, cl)
+    esti_mean[i]=N/n*sum(one_stg_sample$Y)/M0
+  }
+  return(esti_mean)
+}
+
+mean_vec_values = mean_vec(100)
+# Empirical population mean estimate based on 100 tests
+mean(mean_vec_values)
+```
+```{r}
+# Empirical variance of population-mean estimate based on 100 tests
+sd(mean_vec_values)^2
+```
+
+
+```{r}
+#Estimation of Population MSW, MSB using Months as Clusters
+within_var=rep(0,N)
+within_mean=rep(0,N)
+for (i in 1:N){
+  cldata=subset(plantdataraw, Month == paste("M",i,sep=""),select=Y)
+  within_var[i]=sd(cldata$Y)^2
+  within_mean[i]=mean(cldata$Y)
+}
+MSW=mean(within_var)
+MSB=sd(within_mean)^2
+print(c(MSW, MSB))
+```
+
+
+```{r}
+# Box plot to visualize Y variation across clusters
+library(ggplot2)
+# Basic box plot
+p <- ggplot(plantdata, aes(x=Month, y=Y)) + 
+  geom_boxplot()
+p
+```
+
+
+**Simple Random Sampling**
+```{r}
+# Draw 1 SRS sample
+
+n_SRS=round(Mu*n, digits=0) # SRS sample size of about 90 items
+N_SRS=596 # Population size
+COM_sample=sample(plantdataraw$Y, n_SRS, replace=FALSE)
+ind3=which(plantdataraw$Y %in% COM_sample)
+POPTOT_sample=plantdataraw[ind3,1]
+
+# Estimate population mean
+mean(POPTOT_sample$Y)
+```
+```{r}
+# Estimate variance of Population mean estimate
+v=sd(POPTOT_sample$Y)^2 # sample variance
+
+v/n_SRS*(1-n_SRS/N_SRS)
+```
+
+
+```{r}
+# Now, do empirical SRS estimation based on 100 tests 
+
+mean_vec2<-function(T){
+  esti_mean<-rep(0,T)
+  for (i in 1:T){
+    COM_sample=sample(plantdataraw$Y, n_SRS, replace=FALSE)
+    ind3=which(plantdataraw$Y %in% COM_sample)
+    POPTOT_sample=plantdataraw[ind3,1]
+    esti_mean[i]=mean(POPTOT_sample$Y)
+  }
+  return(esti_mean)
+}
+
+
+mean_vec_values = mean_vec2(100) # Empirical population mean estimate based on 100 tests
+mean(mean_vec_values)
+sd(mean_vec_values)^2 # Empirical variance of population-mean estimate based on 100 tests
+```
+
+**Stratified Sampling**
+```{r}
+# Test of Stratified Sampling
+strat = 4 # strata is defined as the quarters
+n_strat = round(n_SRS/strat,digits=0) # sample size per strata, total 90 observation units
+
+# Draw 1 stratified sample
+s=sampling:::strata(plantdataraw, stratanames=c("Quarter"), size=c(n_strat,n_strat,n_strat,n_strat), method="srswor")
+mydata=getdata(plantdataraw,s)
+
+library(plyr)
+count(plantdata, "Quarter")
+```
+
+```{r}
+# Compute the Stratified sample mean estimator
+mean(mydata$Y)
+```
+
+```{r}
+# Compute the estimator variance
+within_var<-function(vec){
+  N_vec<-c(203,207,70,116)
+  N_cum<-cumsum(N_vec)
+  temp<-rep(0,length(N_vec))
+  mydata=getdata(plantdataraw,s)
+  for (i in 1:length(N_vec)){
+    stratadata = subset(mydata, Quarter == paste("Q",i,sep=""),select=Y)
+    temp[i]<-(1-vec[i]/N_vec[i])*(N_vec[i]/sum(N_vec))^2*sd(stratadata$Y)^2/vec[i]
+  }
+  return(temp)
+}
+sqrt(sum(within_var(c(n_strat,n_strat,n_strat,n_strat))))
+```
+
+```{r}
+# Now, do empirical Stratified estimation based on 100 tests 
+mean_vec3<-function(T){
+  esti_mean<-rep(0,T)
+  for (i in 1:T){
+    s=sampling:::strata(plantdataraw,stratanames=c("Quarter"),size=c(n_strat,n_strat,n_strat,n_strat),method="srswor")
+    mydata=getdata(plantdataraw,s)
+    esti_mean[i]=mean(mydata$Y)
+  }
+  return(esti_mean)
+}
+
+mean_vec_values = mean_vec3(100)
+# Empirical population mean estimate based on 100 test
+mean(mean_vec_values)
+# Empirical variance of population-mean estimate based on 100 tests
+sd(mean_vec_values)^2
+```
+```{r}
+#Estimation of Population MSW, MSB using Quarter as Strata
+within_var=rep(0,strat)
+within_mean=rep(0,strat)
+for (i in 1:strat){
+  cldata=subset(plantdataraw, Quarter == paste("Q",i,sep=""),select=Y)
+  within_var[i]=sd(cldata$Y)^2
+  within_mean[i]=mean(cldata$Y)
+}
+MSW=mean(within_var)
+MSB=sd(within_mean)^2
+print(c(MSW, MSB))
+```
+
+
+```{r}
+# Box plot to visualize Y variation across Strata
+library(ggplot2)
+# Basic box plot
+p <- ggplot(plantdata, aes(x=Quarter, y=Y)) + 
+  geom_boxplot()
+p
+```
+
+
+## d) Regression and Prediction (RAHUL)
+Comment: I will try to improve the quality of the linear model we did last semester which had low R2 and did not meet normality and homoscedasticity, but now using GLM. My first choice it would be link=logit but I will experiment with the other ones we did in the class. I will plot the accuracy of the model (predicted vs actual). Initially I will use the full dataset, but I would like to compare if I only use the sample provided by Rahul
+
+
+```{R}
+# 1. Partition data using simple SRS
+ind <- sample(2, nrow(plantdata), replace = TRUE, prob = c(0.8,0.2))
+training <- plantdata[ind==1,]
+testing <- plantdata[ind==2,]
+head(training)
+```
+
+# Testing of colinearity between the variables.
+```{r}
+library(ggplot2)
+library(GGally)
+ggcorr(plantdata, nbreaks = 4, palette = "RdGy")
+```
+
+There are a few highly correlatated variables should be should be removed from the model. 
+
+
+
+
+```{R}
+# 3. Logistic regression using GLM model
+fullmodel <- glm(Y2~ X1+X2+X3+X4+X5+X6+X8+X9+X10+X11+X12+X13+X14+X15+X16+X17+X18+X19+X20+X21+X22+X23+X24+X25+X26+X27+factor(Quarter),data = training, family = binomial)
+summary(fullmodel)
+
+```
+```{R}
+
+# 3. Logistic regression using GLM model
+model_1<- glm(Y2~ X4+X8+X10+X13+X26+X20,data = training, family = binomial)
+
+summary(model_1)
+
+```
+```{R}
+# removing X6 from the model
+model_2<- glm(Y2~(X4+X8+X10+X13+X26+X20)^2,data = training, family = binomial)
+summary(model_2)
+```
+
+```{R}
+# Adding interaction terms GLM model with interaction
+model_3<-glm(Y2~X4+X8+X10+X13+X26+X20+X10*X13+X4*X8+X4*X10+X10*X26, data = training, family = binomial)
+
+summary(model_3)
+
+```
+```{R}
+# Adding interaction terms GLM model with interaction
+finalmodel_eq<-Y2~X10+X13+X26+X20+X10*X13+X10*X26
+finalmodel<-glm(Y2~X10+X13+X26+X20+X10*X13+X10*X26, data = training, family = binomial)
+
+summary(finalmodel)
+
+```
+
+# Model Evaluation and Diagnostics
+We can use a Likelihood Ratio Test to assess if our models are improving the fit. Adding predictor variables to a model will almost always improve the model fit (i.e. increase the log likelihood and reduce the model deviance compared to the null deviance), but it is necessary to test whether the observed difference in model fit is statistically significant. We can use anova to perform this test. The results indicate that, compared to fullmodel, ,model_ffinal reduces the residual deviance by over 13 (remember, a goal of logistic regression is to find a model that minimizes deviance residuals). More imporantly, this improvement is statisticallly significant at p = 0.001. This suggests that model3 does provide an improved model fit.
+
+## Goodness of Fit
+```{R}
+#Likelihood Ratio Test
+anova(fullmodel, finalmodel, test ="Chisq")
+```
+
+
+```{R}
+
+library(lmtest)
+lrtest(fullmodel, finalmodel)
+```
+Both models seems to perform similar, as p-value is low, we can final and full models are different
+
+
+
+
+```{R}
+library(caret)
+varImp(finalmodel)
+```
+
+```{R}
+predict <- predict(finalmodel, training)
+#confusion matrix on training sample
+tab1<-table(training$Y2, predict > 0.5)
+prop.table(tab1)
+1-sum(diag(tab1))/sum(tab1) # error
+sum(diag(tab1))/sum(tab1) # accuracy
+```
+
+```{R}
+predict <- predict(finalmodel, testing)
+#confusion matrix on testing sample
+tab1<-table(testing$Y2, predict > 0.5)
+prop.table(tab1)
+1-sum(diag(tab1))/sum(tab1) # error
+sum(diag(tab1))/sum(tab1) # accuracy
+```
+Testing accuracy of the model
+
+# using test data
+```{R}
+library(pROC)
+test_prob = predict(finalmodel, newdata = testing, type = "response")
+test_roc = roc(testing$Y2 ~ test_prob, plot = TRUE, print.auc = TRUE)
+```
+
+```{R}
+as.numeric(test_roc$auc)
+```
+
+
+# using testining data
+```{R}
+library(pROC)
+test_prob = predict(finalmodel, newdata = training, type = "response")
+test_roc = roc(training$Y2 ~ test_prob, plot = TRUE, print.auc = TRUE)
+```
+```{R}
+as.numeric(test_roc$auc)
+```
+
+A good model will have a high AUC, that is as often as possible a high sensitivity and specificity.
+
+### Testing different link funtions, using cross validation method.
+```{r}
+library(ISLR)
+library(boot)
+# You should redefine the "cost" argument in cv.glm
+cv_error4<-rep(0,4)
+key<-c( "logit", "probit", "cauchit", "cloglog")
+Cost<-function(a,b){
+  b<-round(b)
+  mean(abs(a-b))
+}
+
+#model_fit<-glm(Y2~X10+X13+X26+X20+X10*X13+X10*X26, data =plantdata, family=binomial(link =key[i]))
+
+for (i in 1:4){
+  model_fit<-glm(Y2~X10+X13+X26+X20+X10*X13+X10*X26, data =plantdata, family=binomial(link=make.link(key[i])))
+  cv_error4[i]=cv.glm(plantdata, model_fit, cost =Cost, K=5)$delta[1]
+}
+cv_error4
+
+```
+
+
+
+
+It was found that the most significant predictors of Y2 (on spec and off spec) probabilities were:
+* Deaerator Oulet Temperature (X20)
+* Flot Cells Flot Density (X13)
+* Ore Crusher D50 (X26)
+* PSC Interface Level (X10)
+
+The model classification accuracy is 56%, which means that in order to improve the classification we would require more independent variables.
+
+The cross validation k fold method suggest, that model accuracy best using probit model provides best accuracy of the model.
+
+Link functions tested using K-fold validation method "logit", "probit", "capuchin", "cloglog". The lowest average error was found to be [0.3624161, 0.3657718, 0.3758389, 0.3724832] of the logit model.
+
+
+
+# 4. Conclusions
+Four key variables were found to be dependent with Y=solids %: Deaerator Oulet Temperature (X20), Flot Cells Flot Density (X13), Ore Crusher D50 (X26), PSC Interface Level (X10).These variables make physical sense in terms of explaining the process and can be manipulated in order to keep the solids % under spec.
+
+```{r pressure, echo=FALSE, fig.cap="Oil Sands Mining Operations Overview.", out.width = '100%'}
+knitr::include_graphics("./Insights.JPG")
+```
+
+A generalized linear model was built, with an AUC of 0.623 when using a training dataset, although the model accuracy 57% is not high.
+
+Other unmeasured factors in the plant need to be considered to improve the accuracy of the model.
+
+Design of experiment technique could be used to understand causation vs. correlation of variables.
+
+SRS appears to be a fit for purpose sampling method for sand%. Cluster sampling method using month as clustering variable, yields a large variance, hence is not recommended.The stratified sampling method using Quarters as strata, yields similarly low variance compared to Simple Random Sample.
+
+
